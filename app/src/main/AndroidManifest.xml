@@ -7,7 +7,12 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- перезапуск процесса :vm после «перезагрузки»: точный будильник, иначе система откладывает старт -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- «живые обновления» / 流体云: без этого разрешения система не повышает уведомления
+         и приложение не появляется в системных настройках этого вида уведомлений -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
@@ -21,6 +26,7 @@
     <application
         android:name=".AemuApp"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -60,7 +66,8 @@
         <activity
             android:name=".ui.AppSettingsActivity"
             android:exported="false"
-            android:parentActivityName=".ui.MainActivity" />
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.AEmulator.Settings" />
 
         <activity
             android:name=".ui.VmActivity"
@@ -70,8 +77,12 @@
             android:process=":vm"
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
+            android:taskAffinity="${applicationId}.vm"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.AEmulator.Vm" />
+
+        <!-- перезапуск машины: живёт в основном процессе, поэтому переживает смерть процесса :vm -->
+        <activity android:name=".ui.VmRestartActivity" android:exported="false" />
 
         <service
             android:name=".core.Keeper"
@@ -82,6 +93,12 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the emulated Android system running" />
         </service>
+
+        <!-- импорт прошивки в фоне: живёт в основном процессе, в шторке — шаг и прогресс -->
+        <service
+            android:name=".importer.ImporterService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name="dev.lk.dhd.BinderSlot"

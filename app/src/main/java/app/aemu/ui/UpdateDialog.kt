@@ -34,6 +34,7 @@ import app.aemu.update.ReleaseInfo
 import app.aemu.update.UpdateState
 import java.io.File
 
+/** Диалог обновления: проверка, доступная версия, загрузка, установка, «уже последняя», ошибка. */
 @Composable
 fun UpdateDialog(
     state: UpdateState,
@@ -50,18 +51,9 @@ fun UpdateDialog(
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Sync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
-                title = {
-                    Text(
-                        text = stringResource(R.string.as_check_updates),
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.as_check_updates), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Column(Modifier.fillMaxWidth()) {
                         Text(
@@ -71,19 +63,12 @@ fun UpdateDialog(
                         )
                         Spacer(Modifier.height(16.dp))
                         LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(MaterialTheme.shapes.small)
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(MaterialTheme.shapes.small)
                         )
                     }
                 },
                 confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
+                dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
             )
         }
 
@@ -92,18 +77,9 @@ fun UpdateDialog(
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.SystemUpdate,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
-                title = {
-                    Text(
-                        text = stringResource(R.string.update_available_title),
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.update_available_title), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Column(Modifier.fillMaxWidth()) {
                         Text(
@@ -114,7 +90,7 @@ fun UpdateDialog(
                         if (rel.sizeBytes > 0) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Размер: ${AppUpdateManager.formatBytes(rel.sizeBytes)}",
+                                text = stringResource(R.string.update_size, AppUpdateManager.formatBytes(rel.sizeBytes)),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -123,18 +99,10 @@ fun UpdateDialog(
                             Spacer(Modifier.height(12.dp))
                             Card(
                                 shape = MaterialTheme.shapes.medium,
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 160.dp)
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(12.dp)
-                                        .verticalScroll(rememberScrollState())
-                                ) {
+                                Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
                                     Text(
                                         text = rel.body,
                                         style = MaterialTheme.typography.bodySmall,
@@ -146,48 +114,29 @@ fun UpdateDialog(
                     }
                 },
                 confirmButton = {
-                    Button(onClick = { onStartDownload(rel) }) {
-                        Text(stringResource(R.string.update_btn))
-                    }
+                    Button(onClick = { onStartDownload(rel) }) { Text(stringResource(R.string.update_btn)) }
                 },
-                dismissButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.update_later))
-                    }
-                }
+                dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.update_later)) } }
             )
         }
 
         is UpdateState.Downloading -> {
-            val rel = state.release
             AlertDialog(
                 onDismissRequest = onCancelDownload,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
-                title = {
-                    Text(
-                        text = stringResource(R.string.update_downloading),
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.update_downloading), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Column(Modifier.fillMaxWidth()) {
                         LinearProgressIndicator(
                             progress = { if (state.totalBytes > 0) state.progress else 0f },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(MaterialTheme.shapes.small)
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(MaterialTheme.shapes.small)
                         )
                         Spacer(Modifier.height(8.dp))
                         val percent = (state.progress * 100).toInt()
                         val downloadedStr = AppUpdateManager.formatBytes(state.downloadedBytes)
-                        val totalStr = if (state.totalBytes > 0) AppUpdateManager.formatBytes(state.totalBytes) else "…"
+                        val totalStr = if (state.totalBytes > 0) AppUpdateManager.formatBytes(state.totalBytes) else "—"
                         Text(
                             text = "$percent% ($downloadedStr / $totalStr)",
                             style = MaterialTheme.typography.labelMedium,
@@ -196,11 +145,7 @@ fun UpdateDialog(
                     }
                 },
                 confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = onCancelDownload) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                }
+                dismissButton = { TextButton(onClick = onCancelDownload) { Text(stringResource(R.string.cancel)) } }
             )
         }
 
@@ -208,35 +153,20 @@ fun UpdateDialog(
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
-                title = {
-                    Text(
-                        text = "Готово к установке",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.update_ready_title), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Text(
-                        text = "Файл обновления (${state.release.tagName}) успешно загружен. Нажмите «Установить», чтобы обновить приложение.",
+                        text = stringResource(R.string.update_ready_msg, state.release.tagName),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 confirmButton = {
-                    Button(onClick = { onInstall(state.file) }) {
-                        Text(stringResource(R.string.update_install))
-                    }
+                    Button(onClick = { onInstall(state.file) }) { Text(stringResource(R.string.update_install)) }
                 },
-                dismissButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.close))
-                    }
-                }
+                dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } }
             )
         }
 
@@ -244,18 +174,9 @@ fun UpdateDialog(
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 },
-                title = {
-                    Text(
-                        text = "Обновлений не найдено",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.update_none_title), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Column(Modifier.fillMaxWidth()) {
                         Text(
@@ -266,20 +187,16 @@ fun UpdateDialog(
                         if (state.latestTag.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Последняя версия на GitHub: ${state.latestTag}",
+                                text = stringResource(R.string.update_latest_on_github, state.latestTag),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 },
-                confirmButton = {
-                    Button(onClick = onDismiss) {
-                        Text(stringResource(R.string.ok))
-                    }
-                },
+                confirmButton = { Button(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
                 dismissButton = {
-                    TextButton(onClick = { onOpenUrl("https://github.com/uxazu/AEmulator") }) {
+                    TextButton(onClick = { onOpenUrl(AppUpdateManager.GITHUB_REPO_URL) }) {
                         Text(stringResource(R.string.update_open_github))
                     }
                 }
@@ -290,18 +207,9 @@ fun UpdateDialog(
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.ErrorOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
+                    Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                 },
-                title = {
-                    Text(
-                        text = "Ошибка",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-                },
+                title = { Text(stringResource(R.string.update_error_title), style = MaterialTheme.typography.headlineSmall) },
                 text = {
                     Text(
                         text = stringResource(R.string.update_error, state.message),
@@ -309,11 +217,7 @@ fun UpdateDialog(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 },
-                confirmButton = {
-                    Button(onClick = onDismiss) {
-                        Text(stringResource(R.string.ok))
-                    }
-                }
+                confirmButton = { Button(onClick = onDismiss) { Text(stringResource(R.string.ok)) } }
             )
         }
     }

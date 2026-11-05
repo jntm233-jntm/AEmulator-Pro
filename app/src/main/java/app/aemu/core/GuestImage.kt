@@ -8,6 +8,11 @@ data class VmSettings(
     val width: Int = 540,
     val height: Int = 960,
     val density: Int = 240,
+    /**
+     * The “Host” screen option: width, height and density above still hold the phone's own screen, but they are taken
+     * again from the display at every start (a foldable's other screen, a changed resolution or density).
+     */
+    val hostScreen: Boolean = false,
     /** аппаратная отрисовка через GPU телефона (иначе программный растеризатор прошивки) */
     val gpu: Boolean = true,
     /** hwui в гостевых приложениях (4.x) */
@@ -43,16 +48,22 @@ data class VmSettings(
     val native32: Boolean = false,
     /** IMEI reported by the fake modem; blank = default sample IMEI */
     val imei: String = "",
+    /**
+     * After boot, mark the system as set up inside the guest (`settings put secure user_setup_complete 1` and
+     * `settings put global device_provisioned 1`), so the vendor's setup wizard does not stand in the way.
+     */
+    val skipWizard: Boolean = false,
     /** extra qemu options; KEY=VALUE tokens are passed as environment variables */
     val qemuArgs: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
-        .put("width", width).put("height", height).put("density", density)
+        .put("width", width).put("height", height).put("density", density).put("hostScreen", hostScreen)
         .put("gpu", gpu).put("hwui", hwui).put("jit", jit).put("fullDexopt", fullDexopt).put("fbHz", fbHz)
         .put("touchHz", touchHz).put("netProxy", netProxy).put("lowRam", lowRam)
         .put("showFrame", showFrame).put("showNavBar", showNavBar).put("navKeys", navKeys).put("navSize", navSize)
         .put("keepScreenOn", keepScreenOn).put("showLed", showLed).put("mtMode", mtMode).put("legacyEngine", legacyEngine)
-        .put("ramMb", ramMb).put("radio", radio).put("native32", native32).put("imei", imei).put("qemuArgs", qemuArgs)
+        .put("ramMb", ramMb).put("radio", radio).put("native32", native32).put("imei", imei)
+        .put("skipWizard", skipWizard).put("qemuArgs", qemuArgs)
 
     companion object {
         const val NAV_DEFAULT = "back,home,recents,menu"
@@ -60,6 +71,14 @@ data class VmSettings(
 
         /** Luhn-valid sample IMEI from the standard; the guest has no real modem */
         const val DEFAULT_IMEI = "490154203237518"
+
+        /**
+         * The limits the screen fields accept, shared by the settings sheet and the “Host” option. Widths stay even:
+         * the guest's framebuffer is RGB565 or 32-bit and half a pixel is no use to it.
+         */
+        fun clampWidth(w: Int) = w.coerceIn(240, 2160) and 0x7ffffffe
+        fun clampHeight(h: Int) = h.coerceIn(320, 3840) and 0x7ffffffe
+        fun clampDensity(d: Int) = d.coerceIn(96, 640)
 
         /** Random Luhn-valid IMEI with a test TAC prefix. */
         fun randomImei(): String {
@@ -76,6 +95,7 @@ data class VmSettings(
                 width = o.optInt("width", d.width),
                 height = o.optInt("height", d.height),
                 density = o.optInt("density", d.density),
+                hostScreen = o.optBoolean("hostScreen", d.hostScreen),
                 gpu = o.optBoolean("gpu", d.gpu),
                 hwui = o.optBoolean("hwui", d.hwui),
                 jit = o.optBoolean("jit", d.jit),
@@ -96,6 +116,7 @@ data class VmSettings(
                 radio = o.optBoolean("radio", true),
                 native32 = o.optBoolean("native32", false),
                 imei = o.optString("imei", ""),
+                skipWizard = o.optBoolean("skipWizard", false),
                 qemuArgs = o.optString("qemuArgs", ""),
             )
         }

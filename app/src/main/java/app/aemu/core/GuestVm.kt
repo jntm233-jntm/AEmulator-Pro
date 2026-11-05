@@ -950,6 +950,11 @@ class GuestVm(val ctx: Context, val img: GuestImage) {
         TreeFixer(ctx, paths, img, ::log).noScreenSleep()
         disableBrokenComponents()
         if (img.api >= 24) runCatching { enableHome() }.onFailure { log("home screen check failed: $it") }
+        // «пропустить мастер настройки»: система уже загружена, размечаем её как настроенную
+        if (settings.skipWizard) runCatching {
+            guestShell("settings put secure user_setup_complete 1; settings put global device_provisioned 1", 30_000)
+            log("setup wizard skipped (user_setup_complete, device_provisioned)")
+        }.onFailure { log("setup wizard skip failed: $it") }
         val img2 =img.copy(lastBootMs = bootDoneAt - bootAt, bootCount = img.bootCount + 1)
         ImageStore.save(ctx, img2)
     }

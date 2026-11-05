@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,8 +57,24 @@ private val RESOLUTIONS = listOf(
 private val RAM_STEPS = listOf(0, 256, 512, 768, 1024, 1536, 2048, 3072, 4096)
 
 @Composable
-fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onSave: (VmSettings) -> Unit) {
-    var s by remember { mutableStateOf(img.settings) }
+fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onChange: (VmSettings) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // «Хост»: экран телефона, снятый заново при открытии листа (у складного устройства он мог смениться)
+    val host = remember { app.aemu.core.HostScreen.metrics(ctx) }
+    var s by remember {
+        mutableStateOf(
+            if (img.settings.hostScreen) {
+                img.settings.copy(width = host.width, height = host.height, density = host.density)
+            } else {
+                img.settings
+            }
+        )
+    }
+    // кнопки «Сохранить» больше нет: каждое изменение сразу уходит в настройки образа (первая сборка — не изменение)
+    var first by remember { mutableStateOf(true) }
+    LaunchedEffect(s) {
+        if (first) first = false else onChange(s)
+    }
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding()) {
@@ -73,8 +90,8 @@ fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onSave: (VmSettings) -
                 Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween), modifier = Modifier.fillMaxWidth()) {
                     RESOLUTIONS.forEachIndexed { i, r ->
                         ToggleButton(
-                            checked = s.width == r.w && s.height == r.h,
-                            onCheckedChange = { s = s.copy(width = r.w, height = r.h, density = r.dpi) },
+                            checked = !s.hostScreen && s.width == r.w && s.height == r.h,
+                            onCheckedChange = { s = s.copy(width = r.w, height = r.h, density = r.dpi, hostScreen = false) },
                             shapes = when (i) {
                                 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                                 RESOLUTIONS.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -85,10 +102,29 @@ fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onSave: (VmSettings) -
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                // «Хост»: разрешение и dpi самого телефона; при каждом запуске снимаются заново, так что другой
+                // экран складного устройства или изменённый размер дисплея подхватываются без правки настроек
+                ToggleButton(
+                    checked = s.hostScreen,
+                    onCheckedChange = { on ->
+                        s = if (on) {
+                            s.copy(width = host.width, height = host.height, density = host.density, hostScreen = true)
+                        } else {
+                            s.copy(hostScreen = false)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().semantics { role = Role.RadioButton },
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.host))
+                        Text("${host.width}×${host.height} · ${host.density} dpi", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    NumField(stringResource(R.string.vs_width), s.width, Modifier.weight(1f)) { s = s.copy(width = it.coerceIn(240, 2160) and 0x7ffffffe) }
-                    NumField(stringResource(R.string.vs_height), s.height, Modifier.weight(1f)) { s = s.copy(height = it.coerceIn(320, 3840) and 0x7ffffffe) }
-                    NumField(stringResource(R.string.vs_dpi), s.density, Modifier.weight(1f)) { s = s.copy(density = it.coerceIn(96, 640)) }
+                    NumField(stringResource(R.string.vs_width), s.width, Modifier.weight(1f)) { s = s.copy(width = VmSettings.clampWidth(it), hostScreen = false) }
+                    NumField(stringResource(R.string.vs_height), s.height, Modifier.weight(1f)) { s = s.copy(height = VmSettings.clampHeight(it), hostScreen = false) }
+                    NumField(stringResource(R.string.vs_dpi), s.density, Modifier.weight(1f)) { s = s.copy(density = VmSettings.clampDensity(it), hostScreen = false) }
                 }
                 Text(stringResource(R.string.vs_screen_hint), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
@@ -134,12 +170,19 @@ fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onSave: (VmSettings) -
 
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.vs_advanced), style = MaterialTheme.typography.titleMedium)
+            // первый запуск: пропустить мастер настройки, разметив систему как уже настроенную
+            Toggle(stringResource(R.string.vs_skip_wizard), stringResource(R.string.vs_skip_wizard_sub), s.skipWizard) {
+                s = s.copy(skipWizard = it)
+            }
             OutlinedTextField(value = s.qemuArgs, onValueChange = { s = s.copy(qemuArgs = it) },
                 label = { Text(stringResource(R.string.vs_qemu_args)) }, supportingText = { Text(stringResource(R.string.vs_qemu_args_sub)) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
 
             Spacer(Modifier.height(8.dp))
             RecoverySection(img)
+
+            Spacer(Modifier.height(8.dp))
+            PasswordSection(img)
 
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.vs_controls), style = MaterialTheme.typography.titleMedium)
@@ -150,7 +193,8 @@ fun SettingsSheet(img: GuestImage, onDismiss: () -> Unit, onSave: (VmSettings) -
             Toggle(stringResource(R.string.vs_single), stringResource(R.string.vs_single_sub), s.mtMode == 4) { s = s.copy(mtMode = if (it) 4 else 0) }
 
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { onSave(s) }, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text(stringResource(R.string.save)) }
+            // только закрыть: всё уже сохранено по ходу правки
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text(stringResource(R.string.close)) }
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -203,7 +247,7 @@ private fun NumField(label: String, value: Int, modifier: Modifier, set: (Int) -
 private fun RecoverySection(img: GuestImage) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val paths = remember(img.id) { app.aemu.core.VmPaths(ctx, img.id) }
-    var status by remember { mutableStateOf(recoveryStatus(paths)) }
+    var status by remember { mutableStateOf(recoveryStatus(ctx, paths)) }
     var busy by remember { mutableStateOf(false) }
     val failed = stringResource(R.string.vs_recovery_failed)
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -217,7 +261,7 @@ private fun RecoverySection(img: GuestImage) {
             }.getOrDefault(false)
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 busy = false
-                status = recoveryStatus(paths)
+                status = recoveryStatus(ctx, paths)
                 if (!ok) android.widget.Toast.makeText(ctx, failed, android.widget.Toast.LENGTH_LONG).show()
             }
         }.start()
@@ -233,7 +277,40 @@ private fun RecoverySection(img: GuestImage) {
     )
 }
 
-private fun recoveryStatus(paths: app.aemu.core.VmPaths): String? {
+/** Пароль на машину: пока он задан, любое действие с ней в библиотеке спрашивает пароль. */
+@Composable
+private fun PasswordSection(img: GuestImage) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var locked by remember { mutableStateOf(app.aemu.core.VmLock.isLocked(ctx, img.id)) }
+    var dialog by remember { mutableStateOf(false) }
+    Text(stringResource(R.string.vs_lock), style = MaterialTheme.typography.titleMedium)
+    ListItem(
+        headlineContent = { Text(stringResource(if (locked) R.string.vs_lock_on else R.string.vs_lock_off)) },
+        supportingContent = { Text(stringResource(R.string.vs_lock_sub)) },
+        trailingContent = {
+            TextButton(onClick = { dialog = true }) {
+                Text(stringResource(if (locked) R.string.vs_lock_change else R.string.vs_lock_set))
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
+    if (dialog) SetPasswordDialog(
+        locked = locked,
+        onDismiss = { dialog = false },
+        onSave = { pw ->
+            app.aemu.core.VmLock.set(ctx, img.id, pw)
+            locked = app.aemu.core.VmLock.isLocked(ctx, img.id)
+            dialog = false
+        },
+        onRemove = {
+            app.aemu.core.VmLock.set(ctx, img.id, null)
+            locked = false
+            dialog = false
+        },
+    )
+}
+
+private fun recoveryStatus(ctx: android.content.Context, paths: app.aemu.core.VmPaths): String? {
     if (!app.aemu.core.RecoveryImage.installed(paths)) return null
     val dir = app.aemu.core.RecoveryImage.dir(paths)
     val prop = runCatching { java.io.File(dir, "default.prop").readText() }.getOrDefault("")
@@ -243,6 +320,6 @@ private fun recoveryStatus(paths: app.aemu.core.VmPaths): String? {
         java.io.File(dir, "twres").isDirectory -> "TWRP"
         java.io.File(dir, "sbin/orangefox.sh").exists() || prop.contains("orangefox", true) -> "OrangeFox"
         prop.contains("cwm", true) || java.io.File(dir, "res/images/icon_clockwork.png").exists() -> "ClockworkMod"
-        else -> "Stock recovery"
+        else -> ctx.getString(R.string.vs_recovery_stock)
     }
 }

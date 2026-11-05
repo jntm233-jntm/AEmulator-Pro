@@ -1,0 +1,22 @@
+{
+  "$comment": [
+    "URLs used by build_windows.ps1. Plain 'http://' works on ordinary networks;",
+    "use 'https://' when the mirror only offers TLS and certificate checks pass."
+  ],
+  "gradle_distributions": [
+    "http://downloads.gradle.org/distributions",
+    "http://services.gradle.org/distributions"
+  ],
+  "commandline_tools": [
+    "http://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip"
+  ],
+  "sdk_packages": {
+    "platform-35_r02": "http://dl.google.com/android/repository",
+    "build-tools_r35_windows": "http://dl.google.com/android/repository"
+  },
+  "gradle_mirrors": {
+    "google": "https://maven.aliyun.com/repository/google",
+    "plugin": "https://maven.aliyun.com/repository/gradle-plugin",
+    "public": "https://maven.aliyun.com/repository/public"
+  }
+}

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -103,6 +104,7 @@ fun MachineCard(
     baseName: String?,
     modifier: Modifier = Modifier,
     onStart: () -> Unit,
+    onImmersive: () -> Unit,
     onSettings: () -> Unit,
     onRename: () -> Unit,
     onNewMachine: () -> Unit,
@@ -110,6 +112,11 @@ fun MachineCard(
     onDelete: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    // "Host" screen settings: the card shows the phone's own screen, the one the machine will actually get
+    val screen = remember(img.settings) {
+        val s = img.settings
+        if (s.hostScreen) app.aemu.core.HostScreen.metrics(ctx).let { "${it.width}×${it.height}" } else "${s.width}×${s.height}"
+    }
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
     // expressive press: the card gives a little under the finger and springs back
@@ -131,6 +138,10 @@ fun MachineCard(
             Box(Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.menu), tint = Color.White) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    // «погружение»: система без окон запуска, кнопки «…», панели кнопок и светодиода
+                    DropdownMenuItem(text = { Text(stringResource(R.string.m_immersive)) }, leadingIcon = { Icon(Icons.Rounded.Fullscreen, null) },
+                        onClick = { menu = false; onImmersive() })
+                    HorizontalDivider()
                     DropdownMenuItem(text = { Text(stringResource(R.string.settings)) }, leadingIcon = { Icon(Icons.Rounded.Tune, null) },
                         onClick = { menu = false; onSettings() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
@@ -160,7 +171,7 @@ fun MachineCard(
             Text(img.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 listOfNotNull(
-                    img.settings.let { "${it.width}×${it.height}" },
+                    screen,
                     Formatter.formatShortFileSize(ctx, img.sizeBytes),
                     if (img.lastBootMs > 0) "${img.lastBootMs / 1000} s" else null,
                 ).joinToString(" · "),
@@ -172,15 +183,28 @@ fun MachineCard(
     }
 }
 
-/** "+": an M3 Expressive FAB menu — import a firmware file, or open the firmware library. */
+/**
+ * "+": an M3 Expressive FAB menu — import a firmware file, or open the firmware library.
+ * [leading] sits in the same row as the toggle (the "stop" button), so both buttons share one baseline.
+ */
 @Composable
-fun HomeFab(expanded: Boolean, onToggle: (Boolean) -> Unit, onImport: () -> Unit, onLibrary: () -> Unit) {
+fun HomeFab(
+    expanded: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onImport: () -> Unit,
+    onLibrary: () -> Unit,
+    leading: @Composable () -> Unit = {},
+) {
     FloatingActionButtonMenu(
         expanded = expanded,
         button = {
-            ToggleFloatingActionButton(checked = expanded, onCheckedChange = onToggle) {
-                val icon by remember { derivedStateOf { if (checkedProgress > 0.5f) Icons.Rounded.Close else Icons.Rounded.Add } }
-                Icon(rememberVectorPainter(icon), stringResource(R.string.add_firmware), Modifier.animateIcon({ checkedProgress }))
+            // кнопки в одном ряду: меню-контейнер ставит «+» по низу, а ряд центрирует обе — они на одной линии
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                leading()
+                ToggleFloatingActionButton(checked = expanded, onCheckedChange = onToggle) {
+                    val icon by remember { derivedStateOf { if (checkedProgress > 0.5f) Icons.Rounded.Close else Icons.Rounded.Add } }
+                    Icon(rememberVectorPainter(icon), stringResource(R.string.add_firmware), Modifier.animateIcon({ checkedProgress }))
+                }
             }
         },
     ) {

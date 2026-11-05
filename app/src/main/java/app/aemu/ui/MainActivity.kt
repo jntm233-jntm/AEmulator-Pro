@@ -42,8 +42,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Tune
@@ -57,6 +59,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -74,24 +77,27 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import app.aemu.BuildConfig
-import app.aemu.update.AppUpdateManager
-import app.aemu.update.ReleaseInfo
-import app.aemu.update.UpdateState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import app.aemu.BuildConfig
+import app.aemu.update.AppUpdateManager
+import app.aemu.update.ReleaseInfo
+import app.aemu.update.UpdateState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import app.aemu.core.GuestImage
+import app.aemu.importer.ImportState
 import app.aemu.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.StopCircle
 import android.content.Context
 
 const val ACTION_BOOT = "app.aemu.BOOT"
@@ -169,9 +175,18 @@ fun Library(model: LibraryModel) {
     var addMenu by remember { mutableStateOf(false) }
     var library by remember { mutableStateOf(false) }
     var containerFrom by remember { mutableStateOf<GuestImage?>(null) }
+    var immersiveFor by remember { mutableStateOf<GuestImage?>(null) }
+    var immersiveNoMore by remember { mutableStateOf(false) }
+    var passwordFor by remember { mutableStateOf<GuestImage?>(null) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var vmAlive by remember { mutableStateOf(model.vmRunning()) }
+    // подсказка про общую папку: показывается, пока доступ не выдан и её не закрыли крестиком
+    var storageGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < 30 || android.os.Environment.isExternalStorageManager()) }
+    var storageHintOff by remember { mutableStateOf(app.aemu.AppPrefs.storageHintOff(ctx)) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    val scope = rememberCoroutineScope()
+    // обновления: тихая проверка при запуске (не чаще раза в час) и загрузка с установкой
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
@@ -201,9 +216,59 @@ fun Library(model: LibraryModel) {
                 AppUpdateManager.installApk(ctx, file)
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
-                    updateState = UpdateState.Error(e.localizedMessage ?: "Ошибка загрузки")
+                    updateState = UpdateState.Error(e.localizedMessage ?: "download error")
                 }
             }
+        }
+    }
+
+    UpdateDialog(
+        state = updateState,
+        onDismiss = { updateState = UpdateState.Idle },
+        onStartDownload = ::startDownload,
+        onCancelDownload = {
+            downloadJob?.cancel()
+            updateState = UpdateState.Idle
+        },
+        onInstall = { file -> AppUpdateManager.installApk(ctx, file) },
+        onOpenUrl = { url -> runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
+    )
+
+    // «остановить»: пока в :vm живёт машина, в углу висит кнопка; состояние обновляем нечасто и только на экране
+    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(life) {
+        life.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) {
+                vmAlive = model.vmRunning()
+                delay(1500)
+            }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(life) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME)
+                storageGranted = Build.VERSION.SDK_INT < 30 || android.os.Environment.isExternalStorageManager()
+        }
+        life.lifecycle.addObserver(obs)
+        onDispose { life.lifecycle.removeObserver(obs) }
+    }
+
+    /** Любое действие с машиной: если на ней пароль — сначала спросить его. */
+    fun guarded(img: GuestImage, action: () -> Unit) {
+        if (!app.aemu.core.VmLock.isLocked(ctx, img.id)) {
+            action()
+            return
+        }
+        pendingAction = action
+        passwordFor = img
+    }
+
+    fun startImmersive(img: GuestImage) {
+        if (app.aemu.AppPrefs.immersiveHintOff(ctx)) {
+            model.startVm(ctx, img.id, immersive = true)
+        } else {
+            immersiveNoMore = false
+            immersiveFor = img
         }
     }
 
@@ -211,7 +276,7 @@ fun Library(model: LibraryModel) {
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("AEmulator") },
+                title = { Text(stringResource(R.string.app_name)) },
                 subtitle = { Text(stringResource(R.string.lib_subtitle)) },
                 actions = { IconButton(onClick = { help = true }) { Icon(Icons.Rounded.Info, stringResource(R.string.help)) }
                     IconButton(onClick = { ctx.startActivity(Intent(ctx, AppSettingsActivity::class.java)) }) { Icon(Icons.Rounded.Settings, stringResource(R.string.settings)) } },
@@ -220,7 +285,19 @@ fun Library(model: LibraryModel) {
         },
         floatingActionButton = {
             HomeFab(expanded = addMenu, onToggle = { addMenu = it },
-                onImport = { pick.launch(arrayOf("*/*")) }, onLibrary = { library = true })
+                onImport = { pick.launch(arrayOf("*/*")) }, onLibrary = { library = true },
+                leading = {
+                    // машина живёт в фоне: кнопка гасит её процесс, не открывая окно системы; слева от «+», на одной линии
+                    if (vmAlive) FloatingActionButton(
+                        onClick = {
+                            val id = app.aemu.AppPrefs.runningIdNow(ctx)
+                            val img = images.firstOrNull { it.id == id }
+                            if (img != null) guarded(img) { model.stopRunningVm() } else model.stopRunningVm()
+                        },
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ) { Icon(Icons.Rounded.StopCircle, stringResource(R.string.shutdown)) }
+                })
         },
     ) { pad ->
         val full: androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope.() -> androidx.compose.foundation.lazy.grid.GridItemSpan =
@@ -232,7 +309,12 @@ fun Library(model: LibraryModel) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(span = full) { StorageAccessCard() }
+            if (Build.VERSION.SDK_INT >= 30 && !storageGranted && !storageHintOff) item(span = full) {
+                StorageHintCard(onClose = {
+                    app.aemu.AppPrefs.setStorageHintOff(ctx, true)
+                    storageHintOff = true
+                })
+            }
             item(span = full) {
                 AnimatedVisibility(imp.active || imp.error != null || imp.done != null) {
                     ImportCard(imp, onCancel = model::cancelImport, onDismiss = model::dismissImport)
@@ -245,19 +327,66 @@ fun Library(model: LibraryModel) {
                     img,
                     baseName = images.firstOrNull { it.id == img.baseId }?.name,
                     modifier = Modifier.animateItem(),
-                    onStart = { VmActivity.start(ctx, img.id) },
-                    onSettings = { settingsFor = img },
-                    onRename = { renameFor = img },
-                    onNewMachine = { containerFrom = img },
-                    onReset = { resetFor = img },
-                    onDelete = { deleteFor = img },
+                    onStart = { guarded(img) { model.startVm(ctx, img.id) } },
+                    onImmersive = { guarded(img) { startImmersive(img) } },
+                    onSettings = { guarded(img) { settingsFor = img } },
+                    onRename = { guarded(img) { renameFor = img } },
+                    onNewMachine = { guarded(img) { containerFrom = img } },
+                    onReset = { guarded(img) { resetFor = img } },
+                    onDelete = { guarded(img) { deleteFor = img } },
                 )
             }
         }
     }
 
     settingsFor?.let { img ->
-        SettingsSheet(img, onDismiss = { settingsFor = null }, onSave = { s -> model.updateSettings(img, s); settingsFor = null })
+        SettingsSheet(img, onDismiss = { settingsFor = null }, onChange = { s -> model.updateSettings(img, s) })
+    }
+    passwordFor?.let { img ->
+        PasswordDialog(
+            name = img.name,
+            onDismiss = { passwordFor = null; pendingAction = null },
+            onConfirm = { pw ->
+                if (!app.aemu.core.VmLock.check(ctx, img.id, pw)) {
+                    false
+                } else {
+                    passwordFor = null
+                    val action = pendingAction
+                    pendingAction = null
+                    action?.invoke()
+                    true
+                }
+            },
+        )
+    }
+    immersiveFor?.let { img ->
+        AlertDialog(
+            onDismissRequest = { immersiveFor = null },
+            icon = { Icon(Icons.Rounded.Fullscreen, null) },
+            title = { Text(stringResource(R.string.m_immersive)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.immersive_text))
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clickable { immersiveNoMore = !immersiveNoMore }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(immersiveNoMore, { immersiveNoMore = it })
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.immersive_no_more), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (immersiveNoMore) app.aemu.AppPrefs.setImmersiveHintOff(ctx, true)
+                    immersiveFor = null
+                    model.startVm(ctx, img.id, immersive = true)
+                }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = { TextButton(onClick = { immersiveFor = null }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
     resetFor?.let { img ->
         AlertDialog(
@@ -298,21 +427,10 @@ AlertDialog(
     if (library) LibrarySheet(images.filter { it.baseId.isEmpty() }, onDismiss = { library = false },
         onImportFile = { library = false; pick.launch(arrayOf("*/*")) },
         onImportFolder = { f -> library = false; model.import(android.net.Uri.fromFile(f)) },
-        onNewMachine = { library = false; containerFrom = it })
+        onNewMachine = { img -> library = false; guarded(img) { containerFrom = img } })
     containerFrom?.let { src -> ContainerDialog(src, images, onDismiss = { containerFrom = null },
         onCreate = { from, name, copy, settings -> containerFrom = null; model.clone(from, name, copy, settings) }) }
 
-    UpdateDialog(
-        state = updateState,
-        onDismiss = { updateState = UpdateState.Idle },
-        onStartDownload = ::startDownload,
-        onCancelDownload = {
-            downloadJob?.cancel()
-            updateState = UpdateState.Idle
-        },
-        onInstall = { file -> AppUpdateManager.installApk(ctx, file) },
-        onOpenUrl = { url -> runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
-    )
 }
 
 @Composable
@@ -334,7 +452,7 @@ private fun ContainerDialog(
         settings = when (p) {
             0 -> settings.copy(gpu = true, hwui = true, jit = true, lowRam = false, native32 = has32)
             1 -> settings.copy(gpu = true, hwui = true, jit = true, lowRam = false, native32 = false)
-            else -> settings.copy(gpu = false, hwui = false, jit = true, lowRam = true, width = 480, height = 800, native32 = false)
+            else -> settings.copy(gpu = false, hwui = false, jit = true, lowRam = true, width = 480, height = 800, hostScreen = false, native32 = false)
         }
     }
 
@@ -460,33 +578,31 @@ private fun ContainerDialog(
     )
 }
 
-/** Доступ ко всем файлам: общая папка гостя в «Внутренний накопитель/AEmulator». */
+/** Доступ ко всем файлам: общая папка систем в «Внутренний накопитель/AEmulator»; закрывается крестиком. */
 @Composable
-private fun StorageAccessCard() {
-    if (Build.VERSION.SDK_INT < 30) return
+private fun StorageHintCard(onClose: () -> Unit) {
     val ctx = LocalContext.current
-    var granted by remember { mutableStateOf(android.os.Environment.isExternalStorageManager()) }
-    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(life) {
-        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) granted = android.os.Environment.isExternalStorageManager()
-        }
-        life.lifecycle.addObserver(obs)
-        onDispose { life.lifecycle.removeObserver(obs) }
-    }
-    if (granted) return
-    Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-        Column(Modifier.padding(20.dp)) {
-            Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.storage_text), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = {
-                runCatching {
-                    ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        android.net.Uri.parse("package:${ctx.packageName}")))
-                }.onFailure { ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
-            }) { Text(stringResource(R.string.allow)) }
+    Card(shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        Box {
+            Column(Modifier.padding(20.dp)) {
+                Text(stringResource(R.string.storage_title), style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(end = 28.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(stringResource(R.string.storage_text), style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = {
+                    runCatching {
+                        ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            android.net.Uri.parse("package:${ctx.packageName}")))
+                    }.onFailure {
+                        ctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    }
+                }) { Text(stringResource(R.string.allow)) }
+            }
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                Icon(Icons.Rounded.Close, stringResource(R.string.close), Modifier.size(18.dp))
+            }
         }
     }
 }

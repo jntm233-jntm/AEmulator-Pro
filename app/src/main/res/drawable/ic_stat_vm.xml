@@ -1,5 +1,10 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M7,1h10a2,2 0,0 1,2 2v18a2,2 0,0 1,-2 2H7a2,2 0,0 1,-2 -2V3a2,2 0,0 1,2 -2zM7,4v15h10V4zM9.5,8.2l1.1,-1.1 1.4,1.4 1.4,-1.4 1.1,1.1 -1.4,1.4 1.4,1.4 -1.1,1.1 -1.4,-1.4 -1.4,1.4 -1.1,-1.1 1.4,-1.4z"/>
+    <!-- корпус телефона: просто устройство, без крестика -->
+    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF"
+        android:pathData="M8,2h8a2.5,2.5 0 0 1,2.5 2.5v15A2.5,2.5 0 0 1,16 22H8a2.5,2.5 0 0 1,-2.5 -2.5v-15A2.5,2.5 0 0 1,8 2zM8,4a0.5,0.5 0 0 0,-0.5 0.5v15A0.5,0.5 0 0 0,8 20h8a0.5,0.5 0 0 0,0.5 -0.5v-15A0.5,0.5 0 0 0,16 4z" />
+    <!-- динамик -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10.5,5h3v1h-3z" />
+    <!-- полоска домашнего экрана -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10,18.4h4v1.2h-4z" />
 </vector>

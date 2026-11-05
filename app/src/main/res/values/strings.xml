@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- создано app/l10n/gen.py, правьте langs/*.py -->
 <resources>
-    <string name="app_name" translatable="false">AEmulator</string>
+    <string name="app_name" translatable="false">AEmulator Pro</string>
     <string name="channel_vm">Running system</string>
     <string name="vm_running">%1$s is running</string>
     <string name="vm_running_hint">Tap to return to the system screen</string>
@@ -176,21 +176,6 @@
     <string name="m_device">Device state</string>
     <string name="m_airplane">Airplane mode</string>
     <string name="m_stay_awake">Keep screen on</string>
-    <string name="as_updates">Updates</string>
-    <string name="as_auto_updates">Auto-check for updates</string>
-    <string name="as_auto_updates_sub">Check GitHub for new releases on app startup</string>
-    <string name="as_check_updates">Check for updates</string>
-    <string name="as_check_updates_sub">Current version: %1$s</string>
-    <string name="update_available_title">Update Available</string>
-    <string name="update_available_msg">A new version %1$s is available. Would you like to update?</string>
-    <string name="update_latest">You have the latest version (%1$s)</string>
-    <string name="update_checking">Checking for updates…</string>
-    <string name="update_btn">Update</string>
-    <string name="update_later">Later</string>
-    <string name="update_downloading">Downloading update…</string>
-    <string name="update_install">Install</string>
-    <string name="update_error">Failed to check for updates: %1$s</string>
-    <string name="update_open_github">View on GitHub</string>
     <string name="lib_title">Firmware library</string>
     <string name="lib_empty">No firmware yet: import a firmware file to create the first machine.</string>
     <string name="new_machine">New machine</string>
@@ -211,4 +196,97 @@
     <string name="m_vnc_started">VNC: %1$s, password %2$s</string>
     <string name="as_led">Notification light</string>
     <string name="as_led_sub">Show the guest phone’s LED above its screen</string>
+    <string name="as_screen">System screen</string>
+    <string name="as_cutout">Avoid the notch and camera cutout</string>
+    <string name="as_cutout_sub">The system screen stays clear of the notch or the camera hole. Off: it uses the whole display and may go behind them. Applied when the system is reopened.</string>
+    <string name="as_nav_menu">Button bar and menu</string>
+    <string name="as_nav_overlay">Bar over the system screen</string>
+    <string name="as_nav_overlay_sub">The bar floats over the screen instead of taking a strip under it.</string>
+    <string name="as_nav_alpha">Bar transparency</string>
+    <string name="as_nav_movable">Movable bar</string>
+    <string name="as_nav_movable_sub">Drag the bar wherever you like; closing the system puts it back.</string>
+    <string name="as_hide_menu">Hide the “…” button</string>
+    <string name="as_hide_menu_sub">The phone’s back key or gesture then opens this menu instead of sending Back to the system.</string>
+    <string name="as_menu_alpha">“…” button transparency</string>
+    <string name="vs_recovery_stock">Stock recovery</string>
+    <string name="as_boot">Startup window</string>
+    <string name="as_boot_hidden">Start with the window hidden</string>
+    <string name="as_boot_hidden_sub">The “system is starting” window then stays a small chip in the top-left corner; tap it to open the window again.</string>
+    <string name="m_immersive">Immersive mode</string>
+    <string name="immersive_text">The system starts without the startup window, the “…” menu, the Android button bar and the LED; the phone’s back key or gesture goes to the system. Startup errors are still shown.</string>
+    <string name="immersive_no_more">Don’t show this again</string>
+    <string name="vs_skip_wizard">Skip the setup wizard</string>
+    <string name="vs_skip_wizard_sub">After boot, mark the system as already set up (user_setup_complete, device_provisioned) so the first-run wizard does not appear.</string>
+    <string name="channel_import">Firmware import</string>
+    <string name="as_reset_menu_pos_sub">Puts the “…” button back in the top-right corner of the system screen.</string>
+    <string name="vs_lock">Password protection</string>
+    <string name="vs_lock_on">Password is set</string>
+    <string name="vs_lock_off">No password</string>
+    <string name="vs_lock_sub">With a password, starting this machine, its settings, renaming, resetting and deleting all ask for it first. Only a salted hash is stored.</string>
+    <string name="vs_lock_set">Set…</string>
+    <string name="vs_lock_change">Change…</string>
+    <string name="vs_lock_remove">Remove</string>
+    <string name="pw_prompt">Enter the password</string>
+    <string name="pw_label">Password</string>
+    <string name="pw_wrong">Wrong password</string>
+    <string name="pw_min">At least 4 characters</string>
+    <string name="as_reset_menu_pos_done">Button position reset</string>
+    <string name="as_menu_movable">Move the “…” button</string>
+    <string name="as_menu_movable_sub">On: the button can be dragged. Off: it stays in its corner.</string>
+    <string name="as_notifications">Notifications</string>
+    <string name="as_live_updates">Live updates (island)</string>
+    <string name="as_live_updates_sub">Android 16+: the running system and the firmware import show as a progress chip in the status bar. Off or unsupported: ordinary notifications.</string>
+    <string name="vm_restarting">Restarting the system…</string>
+    <string name="vm_restart_failed">The system could not be restarted</string>
+    <string name="as_original_app">Original: AEmulator</string>
+    <string name="as_project">This project: AEmulator Pro</string>
+    <string name="as_license">Licence</string>
+    <string name="as_notice">Modification notice</string>
+    <string name="as_notice_sub">What was changed compared to the original AEmulator</string>
+    <string name="as_predictive_back">Predictive back animation</string>
+    <string name="as_predictive_back_sub">The screen follows the back gesture (Android 13+)</string>
+    <string name="legal_notice_text" translatable="false">AEmulator Pro is a modified version of AEmulator (github.com/uxazu/aemulator) by uxazu,
+which is based on SENSES by Istratii-tech. Licensed under the GNU GPL v3.0.
+
+Changes in this fork:
+- application name &quot;AEmulator Pro&quot; and package id app.aemu.pro;
+- new launcher icon colours (#006D61) and accent colour;
+- reworked settings: section order, predictive-back animation, licence and notice pages;
+- Android 16 live-update notifications with a switch;
+- faster reboot: a hand-off activity in the main process reopens the machine window;
+- per-machine password protection, separate task stacks, background firmware import;
+- new UI strings and localisation fixes.
+
+This program is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU General Public License for more details.
+
+The full licence text is available on the previous screen and in the LICENSE file of the
+project repository.</string>
+    <string name="as_orig_author">Original author</string>
+    <string name="as_updates">Updates</string>
+    <string name="as_auto_updates">Auto-check for updates</string>
+    <string name="as_auto_updates_sub">Check GitHub for new releases on app startup</string>
+    <string name="as_check_updates">Check for updates</string>
+    <string name="as_check_updates_sub">Current version: %1$s</string>
+    <string name="update_available_title">Update Available</string>
+    <string name="update_available_msg">A new version %1$s is available. Would you like to update?</string>
+    <string name="update_latest">You have the latest version (%1$s)</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_btn">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading update…</string>
+    <string name="update_install">Install</string>
+    <string name="update_error">Failed to check for updates: %1$s</string>
+    <string name="update_open_github">View on GitHub</string>
+    <string name="update_none_title">No updates</string>
+    <string name="update_ready_title">Ready to install</string>
+    <string name="update_ready_msg">The update file (%1$s) has been downloaded. Tap “Install” to update the app.</string>
+    <string name="update_size">Size: %1$s</string>
+    <string name="update_latest_on_github">Latest version on GitHub: %1$s</string>
+    <string name="update_error_title">Error</string>
 </resources>

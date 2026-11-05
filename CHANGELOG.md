@@ -1,3 +1,23 @@
+# AEmulator Pro (fork)
+
+## 0.0.0.3.1 — 2026-11
+
+Fork of AEmulator 0.0.0.3 by uxazu. Changes in this fork:
+
+- application name **AEmulator Pro**, package id `app.aemu.pro`;
+- launcher icon and accent colour `#006D61`, light and dark Material 3 schemes rebuilt;
+- settings: reworked sections, predictive-back animation, licence and modification-notice pages,
+  links to the original project and its author;
+- Android 16 live-update notifications ("dynamic island"), switchable in settings;
+- fast reboot: a hand-off activity in the main process reopens the machine window at once;
+- per-machine password protection, a separate task stack per machine, background firmware import,
+  per-machine "skip setup wizard";
+- product flavors removed: a single APK without a `.clone` suffix.
+
+The notes below describe the upstream 0.0.0.3 release and are kept for history.
+
+---
+
 # AEmulator 0.0.0.3
 
 **🇬🇧 English** · [🇷🇺 Русский](docs/i18n/CHANGELOG.ru.md) · [🇺🇦 Українська](docs/i18n/CHANGELOG.uk.md) · [🇩🇪 Deutsch](docs/i18n/CHANGELOG.de.md) · [🇫🇷 Français](docs/i18n/CHANGELOG.fr.md) · [🇪🇸 Español](docs/i18n/CHANGELOG.es.md) · [🇧🇷 Português](docs/i18n/CHANGELOG.pt-BR.md) · [🇮🇹 Italiano](docs/i18n/CHANGELOG.it.md) · [🇵🇱 Polski](docs/i18n/CHANGELOG.pl.md) · [🇹🇷 Türkçe](docs/i18n/CHANGELOG.tr.md) · [🇸🇦 العربية](docs/i18n/CHANGELOG.ar.md) · [🇮🇷 فارسی](docs/i18n/CHANGELOG.fa.md) · [🇮🇳 हिन्दी](docs/i18n/CHANGELOG.hi.md) · [🇮🇩 Indonesia](docs/i18n/CHANGELOG.id.md) · [🇻🇳 Tiếng Việt](docs/i18n/CHANGELOG.vi.md) · [🇨🇳 简体中文](docs/i18n/CHANGELOG.zh-CN.md) · [🇯🇵 日本語](docs/i18n/CHANGELOG.ja.md) · [🇰🇷 한국어](docs/i18n/CHANGELOG.ko.md)

@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <!-- стрелка вниз: импорт/загрузка -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M11,3h2v8.2h3.3L12,16.5 7.7,11.2H11z" />
+    <!-- лоток -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M4,17h2v3h12v-3h2v5H4z" />
+</vector>

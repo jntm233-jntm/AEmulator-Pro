@@ -44,31 +44,19 @@ android {
     compileSdk = 36
 
     defaultConfig {
+        applicationId = "app.aemu.pro"
         minSdk = 26
         // 28: гостевые бинарники запускаются из каталога данных приложения (W^X для targetSdk>=29)
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 3
-        versionName = "0.0.0.3"
+        versionCode = 4
+        versionName = "0.0.0.3.1"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
-    flavorDimensions += "distribution"
-    productFlavors {
-        create("standard") {
-            dimension = "distribution"
-            applicationId = "app.aemu"
-        }
-        create("clone") {
-            dimension = "distribution"
-            applicationId = "app.aemu.clone"
-        }
-        // a copy of this release that installs next to app.aemu (a package name part cannot start with a digit)
-        create("v0003") {
-            dimension = "distribution"
-            applicationId = "app.aemu.v0003"
-        }
-    }
+    // один вариант сборки: пакет app.aemu.pro, файл app-debug.apk / app-release.apk.
+    // (прежние flavor'ы clone/v0003 ставились рядом, но из-за них Android Studio по умолчанию
+    // собирала вариант с суффиксом .clone — для публикации это не нужно)
 
     signingConfigs {
         if (canSign) create("release") {
@@ -137,17 +125,13 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// sh: ./gradlew :app:copyReleaseApks -> release-apks/<version>/app.aemu.apk and app.aemu.0003.apk
+// sh: ./gradlew :app:copyReleaseApks -> release-apks/<version>/AEmulatorPro-<version>.apk
 tasks.register<Copy>("copyReleaseApks") {
-    dependsOn("assembleStandardRelease", "assembleV0003Release")
+    dependsOn("assembleRelease")
     val v = android.defaultConfig.versionName
-    from(layout.buildDirectory.dir("outputs/apk/standard/release")) {
+    from(layout.buildDirectory.dir("outputs/apk/release")) {
         include("*.apk")
-        rename { "app.aemu.apk" }
-    }
-    from(layout.buildDirectory.dir("outputs/apk/v0003/release")) {
-        include("*.apk")
-        rename { "app.aemu.0003.apk" }
+        rename { "AEmulatorPro-$v.apk" }
     }
     into(rootProject.layout.projectDirectory.dir("release-apks/$v"))
 }

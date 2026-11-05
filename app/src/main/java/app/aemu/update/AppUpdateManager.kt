@@ -15,6 +15,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 
+/** Сведения о последнем релизе с APK-файлом. */
 data class ReleaseInfo(
     val versionName: String,
     val tagName: String,
@@ -35,13 +36,17 @@ sealed interface UpdateState {
     data class Error(val message: String) : UpdateState
 }
 
+/**
+ * Обновления из GitHub Releases этого проекта.
+ *
+ * Приложение читает список релизов, берёт первый не черновик, у которого приложен APK, сравнивает
+ * тег с установленной версией, при желании скачивает файл и передаёт его системному установщику.
+ */
 object AppUpdateManager {
-    private const val RELEASES_API = "https://api.github.com/repos/uxazu/AEmulator/releases"
-    private const val GITHUB_REPO_URL = "https://github.com/uxazu/AEmulator"
+    private const val RELEASES_API = "https://api.github.com/repos/jntm233-jntm/AEmulator-Pro/releases"
+    const val GITHUB_REPO_URL = "https://github.com/jntm233-jntm/AEmulator-Pro"
 
-    /**
-     * Запрос к GitHub API для получения информации о последнем релизе с APK-файлом.
-     */
+    /** Запрос к GitHub API за последним релизом с APK-файлом. */
     suspend fun checkLatestRelease(): Result<ReleaseInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val url = URL(RELEASES_API)
@@ -49,7 +54,7 @@ object AppUpdateManager {
             conn.connectTimeout = 15000
             conn.readTimeout = 15000
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            conn.setRequestProperty("User-Agent", "AEmulator-App")
+            conn.setRequestProperty("User-Agent", "AEmulatorPro-App")
 
             if (conn.responseCode != HttpURLConnection.HTTP_OK) {
                 throw Exception("HTTP ${conn.responseCode}: ${conn.responseMessage}")
@@ -91,10 +96,7 @@ object AppUpdateManager {
         }
     }
 
-    /**
-     * Сравнение версий (семантическое сравнение сегментов чисел).
-     * Возвращает true, если latestTag новее чем currentVersion.
-     */
+    /** Сравнение версий по сегментам: 0.0.0.3.1 < 0.0.0.3.2 < 0.0.0.4. */
     fun isNewerVersion(latestTag: String, currentVersion: String): Boolean {
         val cleanLatest = latestTag.trim().removePrefix("v").removePrefix("V")
         val cleanCurrent = currentVersion.trim().removePrefix("v").removePrefix("V")
@@ -115,13 +117,10 @@ object AppUpdateManager {
             if (l > c) return true
             if (l < c) return false
         }
-
         return false
     }
 
-    /**
-     * Скачивание APK с поддержкой редиректов (GitHub перенаправляет на AWS S3) и отслеживанием прогресса.
-     */
+    /** Скачивание APK с прогрессом (GitHub перенаправляет файлы на S3, поэтому редиректы учитываются). */
     suspend fun downloadApk(
         context: Context,
         release: ReleaseInfo,
@@ -130,7 +129,7 @@ object AppUpdateManager {
         val updatesDir = File(context.getExternalFilesDir(null) ?: context.cacheDir, "updates")
         if (!updatesDir.exists()) updatesDir.mkdirs()
 
-        // Очищаем старые apk перед новой загрузкой
+        // старые загрузки больше не нужны
         updatesDir.listFiles()?.forEach { if (it.extension.equals("apk", ignoreCase = true)) it.delete() }
 
         val targetFile = File(updatesDir, "aemulator-${release.versionName}.apk")
@@ -144,7 +143,7 @@ object AppUpdateManager {
             conn.connectTimeout = 15000
             conn.readTimeout = 30000
             conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "AEmulator-App")
+            conn.setRequestProperty("User-Agent", "AEmulatorPro-App")
 
             val code = conn.responseCode
             if (code in listOf(HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP, 307, 308)) {
@@ -183,9 +182,7 @@ object AppUpdateManager {
         targetFile
     }
 
-    /**
-     * Запуск установки загруженного APK через системный PackageInstaller.
-     */
+    /** Запуск установки скачанного APK через системный установщик. */
     fun installApk(context: Context, file: File): Boolean {
         if (!file.exists()) return false
 
@@ -200,11 +197,7 @@ object AppUpdateManager {
             }
         }
 
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            file
-        )
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")

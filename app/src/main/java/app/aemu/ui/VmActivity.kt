@@ -7,6 +7,7 @@ import android.content.Context
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -36,6 +37,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import android.content.ClipData
@@ -64,6 +66,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,7 +92,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.DragIndicator
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Minimize
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Terminal
@@ -138,6 +143,13 @@ object VmHost {
 
 class VmActivity : ComponentActivity() {
     private lateinit var vm: GuestVm
+    /** защита от двойного «стоп/перезагрузка»: второе нажатие уже ничего не делает */
+    private val endingVm = java.util.concurrent.atomic.AtomicBoolean(false)
+    /**
+     * Живёт, пока жив этот процесс: его передают в [VmRestartActivity], и по его «смерти» основной
+     * процесс понимает, что можно открывать новое окно системы.
+     */
+    private val processLifetime = android.os.Binder()
     private lateinit var surfaceView: SurfaceView
     private lateinit var guest: GuestScreen
     /** the guest's screen size, for what takes frames off it (VNC, recording) */
@@ -156,6 +168,32 @@ class VmActivity : ComponentActivity() {
     /** this system's setting "Notification light" (the settings sheet changes it while the system runs) */
     private var showLed by mutableStateOf(true)
     private var guestTopPx by mutableStateOf(0)
+    /** the guest screen's box on this display, for what is drawn next to it (the LED: 30 % of its width) */
+    private var guestLeftPx by mutableStateOf(0)
+    private var guestWPx by mutableStateOf(0)
+    /** the window's size and safe area, kept for fitting the guest screen into them again */
+    private var rootW = 0
+    private var rootH = 0
+    private var safeTopPx = 0
+    private var safeBottomPx = 0
+    /** the app settings of the bar under the screen and of the "…" button; read again on every return to the system */
+    private var navOverlay by mutableStateOf(false)
+    private var navAlpha by mutableStateOf(1f)
+    private var navMovable by mutableStateOf(false)
+    private var hideMenu by mutableStateOf(false)
+    private var menuAlpha by mutableStateOf(1f)
+    /** «…» можно перетаскивать (настройка приложения), иначе кнопка закреплена в своём углу */
+    private var menuMovable by mutableStateOf(true)
+    /** where the bar was dragged to: in memory only, so closing the system puts it back under the screen */
+    private var navOffset by mutableStateOf(Offset.Zero)
+    /** the bar's own size, so dragging keeps all of it on screen */
+    private var navBarSize by mutableStateOf(androidx.compose.ui.unit.IntSize.Zero)
+    /** the back presses that have to open the menu, while the "…" button is hidden */
+    private var menuRequest by mutableStateOf(0)
+    /** «система запускается» свёрнута в маленькое окно в углу (по умолчанию — см. настройку приложения) */
+    private var bootCardHidden by mutableStateOf(false)
+    /** «погружение»: без окна запуска, кнопки «…», панели кнопок и светодиода; back телефона уходит гостю */
+    private var immersiveMode by mutableStateOf(false)
     private val logLines = mutableStateListOf<String>()
 
     @SuppressLint("ClickableViewAccessibility")
@@ -171,15 +209,33 @@ class VmActivity : ComponentActivity() {
             ?.let { if (cur?.img?.id == it.id) it else app.aemu.importer.Analyzer.refresh(this, it).effective() }
         if (img == null) { finish(); return }
         if (cur != null && cur.img.id != img.id && cur.state != GuestVm.State.STOPPED) {
-            // в процессе уже живёт другая машина — её надо сначала остановить
-            cur.stop()
-            restartProcess(img.id)
+            // в процессе уже живёт другая машина — её надо сначала остановить, но не дольше пары секунд
+            VmHost.vm = null
+            thread {
+                // гасим полностью, чтобы гостевые процессы не остались сиротами
+                runCatching { cur.stop() }
+                runOnUiThread { restartProcess(img.id) }
+            }
             return
         }
+        // «Хост» в настройках экрана: разрешение и dpi телефона снимаются заново при каждом запуске, поэтому другой
+        // экран складного устройства или изменённый размер дисплея подхватываются без правки настроек
+        val resolved = app.aemu.core.HostScreen.resolve(this, img)
         vm = if (cur != null && cur.img.id == img.id) cur
-            else GuestVm(applicationContext, img).also { it.recoveryMode = intent.getBooleanExtra(EXTRA_RECOVERY, false); VmHost.vm = it }
+            else GuestVm(applicationContext, resolved).also { it.recoveryMode = intent.getBooleanExtra(EXTRA_RECOVERY, false); VmHost.vm = it }
         vm.onPower = { reboot, reason -> runOnUiThread { if (reboot) rebootVm(reason == "recovery") else stopVm() } }
+        // главный экран по этой записи понимает, что машина жива, и показывает кнопку «остановить»
+        app.aemu.AppPrefs.setRunningId(this, img.id)
         val s = vm.settings
+        // настройка приложения «обход выреза»: читается здесь, поэтому смена значения действует при следующем
+        // открытии системы — выключенная, она отдаёт гостевому экрану всю площадь дисплея, включая место под вырезом
+        val avoidCutout = app.aemu.AppPrefs.cutoutAvoid(this)
+        // «погружение» (из меню карточки): без окон запуска и кнопок, back телефона остаётся гостю
+        immersiveMode = intent.getBooleanExtra(EXTRA_IMMERSIVE, false)
+        // панель кнопок и кнопка «…»: настройки приложения, снова читаются при каждом возврате в систему
+        readUiPrefs()
+        // «окно запуска»: его можно прятать в угол по умолчанию
+        bootCardHidden = app.aemu.AppPrefs.hideBootCard(this) || immersiveMode
         showLed = s.showLed
         if (s.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -213,34 +269,21 @@ class VmActivity : ComponentActivity() {
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
 
-        // экран гостя вписываем с сохранением пропорций над панелью кнопок
-        val navDp = if (!s.showNavBar) 0 else if (s.navSize == 0) 46 else 64
         // the window draws edge to edge (for the overlay's keyboard padding): the guest screen keeps out of the
-        // camera cutout and system bars; the keyboard is not counted, so the screen does not jump when it opens
-        var safeTop = 0
-        var safeBottom = 0
+        // camera cutout (unless the setting says otherwise) and the system bars; the keyboard is not counted, so the
+        // screen does not jump when it opens
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { v, ins ->
-            val bars = ins.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-            if (bars.top != safeTop || bars.bottom != safeBottom) { safeTop = bars.top; safeBottom = bars.bottom; v.requestLayout() }
+            val types = androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                (if (avoidCutout) androidx.core.view.WindowInsetsCompat.Type.displayCutout() else 0)
+            val bars = ins.getInsets(types)
+            if (bars.top != safeTopPx || bars.bottom != safeBottomPx) {
+                safeTopPx = bars.top; safeBottomPx = bars.bottom; fitGuest()
+            }
             ins
         }
-        root.addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ ->
-            val navPx = (navDp * resources.displayMetrics.density).toInt()
-            val aw = r - l
-            val ah = b - t - navPx - safeTop - safeBottom
-            if (aw <= 0 || ah <= 0) return@addOnLayoutChangeListener
-            val scale = minOf(aw.toFloat() / gw, ah.toFloat() / gh)
-            val w = (gw * scale).toInt()
-            val h = (gh * scale).toInt()
-            val lp = box.layoutParams as FrameLayout.LayoutParams
-            val top = safeTop + (ah - h) / 2
-            if (guestTopPx != top) guestTopPx = top
-            if (lp.width != w || lp.height != h || lp.topMargin != top) {
-                lp.width = w; lp.height = h
-                lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
-                lp.topMargin = top
-                v.post { box.layoutParams = lp }
-            }
+        root.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
+            rootW = r - l; rootH = b - t
+            fitGuest()
         }
 
         vm.onFrame = { guest.rings++; guest.poke() }
@@ -256,13 +299,79 @@ class VmActivity : ComponentActivity() {
         loadMenuOffset()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { vm.input.press(InputService.KEY_BACK) }
+            override fun handleOnBackPressed() {
+                // «меню без кнопки»: back телефона открывает меню эмулятора, а не отправляет back гостю
+                if (hideMenu && !immersiveMode) menuRequest++ else vm.input.press(InputService.KEY_BACK)
+            }
         })
 
         registerShell()
+        // «стоп» из библиотеки и возврат кнопки «…» в угол из настроек
+        runCatching {
+            val sf = android.content.IntentFilter().apply {
+                addAction("app.aemu.STOP")
+                addAction("app.aemu.RESET_MENU")
+                addAction("app.aemu.NOTIF_STYLE")
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(stopRx, sf, Context.RECEIVER_NOT_EXPORTED)
+            else registerReceiver(stopRx, sf)
+        }
         if (vm.state == GuestVm.State.STOPPED || vm.state == GuestVm.State.FAILED) {
             thread(name = "vm-boot") { vm.boot() }
         }
+    }
+
+    /** Another system was picked while this one runs: the process holds one machine, so it restarts into the new one. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val id = intent.getStringExtra(EXTRA_ID) ?: return
+        val cur = VmHost.vm ?: return
+        if (cur.img.id == id) return
+        thread {
+            VmHost.vm = null
+            runCatching { cur.stop() }
+            runOnUiThread { restartProcess(id, intent.getBooleanExtra(EXTRA_RECOVERY, false)) }
+        }
+    }
+
+    /**
+     * Вписывает экран гостя в окно с сохранением пропорций: над панелью кнопок (или под ней, если она накладывается
+     * на экран), под вырезом и над системной навигацией. Вызывается на каждую смену размеров и настроек.
+     */
+    private fun fitGuest() {
+        if (rootW <= 0 || rootH <= 0 || guestW <= 0 || guestH <= 0 || !::box.isInitialized || !::vm.isInitialized) return
+        val s = vm.settings
+        val navDp = if (!s.showNavBar || navOverlay) 0 else if (s.navSize == 0) 46 else 64
+        val navPx = (navDp * resources.displayMetrics.density).toInt()
+        val aw = rootW
+        val ah = rootH - navPx - safeTopPx - safeBottomPx
+        if (aw <= 0 || ah <= 0) return
+        val scale = minOf(aw.toFloat() / guestW, ah.toFloat() / guestH)
+        val w = (guestW * scale).toInt()
+        val h = (guestH * scale).toInt()
+        if (guestWPx != w) guestWPx = w
+        if (guestLeftPx != (aw - w) / 2) guestLeftPx = (aw - w) / 2
+        val lp = box.layoutParams as FrameLayout.LayoutParams
+        val top = safeTopPx + (ah - h) / 2
+        if (guestTopPx != top) guestTopPx = top
+        if (lp.width != w || lp.height != h || lp.topMargin != top) {
+            lp.width = w; lp.height = h
+            lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            lp.topMargin = top
+            box.post { box.layoutParams = lp }
+        }
+    }
+
+    /** Панель кнопок и кнопка «…»: настройки приложения, снимаются заново при возврате в систему. */
+    private fun readUiPrefs() {
+        val u = app.aemu.AppPrefs.vmUiNow(this)
+        navOverlay = u.navOverlay
+        navAlpha = u.navAlpha / 100f
+        navMovable = u.navMovable
+        // в «погружении» кнопки меню нет всегда: back телефона при этом уходит гостю (см. обработчик back)
+        hideMenu = u.hideMenu || immersiveMode
+        menuAlpha = u.menuAlpha / 100f
+        menuMovable = u.menuMovable && !immersiveMode
     }
 
     /** Отладка: adb shell am broadcast -a app.aemu.SHELL --es cmd "dumpsys power" → run/shell.out */
@@ -330,6 +439,14 @@ class VmActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::vm.isInitialized) vm.sensors.resume(true)
+        // настройки панели и кнопки «…» могли измениться, пока система была в фоне
+        if (::box.isInitialized) {
+            val overlay = navOverlay
+            readUiPrefs()
+            if (overlay != navOverlay) fitGuest()
+        }
+        // место кнопки «…» мог сбросить главный экран — файл читаем заново
+        loadMenuOffset()
     }
 
     override fun onPause() {
@@ -342,15 +459,36 @@ class VmActivity : ComponentActivity() {
         recorder?.let { r -> thread { r.stop() } }; recorder = null
         if (::guest.isInitialized) guest.stop()
         shellRx?.let { runCatching { unregisterReceiver(it) } }
+        runCatching { unregisterReceiver(stopRx) }
         super.onDestroy()
     }
 
+    /** «Стоп» с главного экрана: машина гасится по-хорошему, без открытия её окна. */
+    private val stopRx = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            when (i.action) {
+                // из настроек вернули кнопку «…» в угол — открытая система видит это сразу
+                "app.aemu.RESET_MENU" -> runOnUiThread { menuOffset = Offset.Zero }
+                // сменили вид уведомлений — перерисовываем уведомление работающей системы
+                "app.aemu.NOTIF_STYLE" -> if (::vm.isInitialized) thread { app.aemu.core.Keeper.hold(this@VmActivity, vm.img.name) }
+                else -> if (::vm.isInitialized) stopVm()
+            }
+        }
+    }
+
     private fun stopVm() {
+        if (!endingVm.compareAndSet(false, true)) return
+        app.aemu.AppPrefs.setRunningId(this, "")
+        val cur = vm
+        // машина больше не «живая»: новый запуск не должен подхватить останавливающуюся
+        VmHost.vm = null
+        // окно закрывается сразу, гость гасится уже в фоне
+        runOnUiThread { finishAndRemoveTask() }
         thread {
-            vm.stop()
-            VmHost.vm = null
-            runOnUiThread { finishAndRemoveTask() }
-            Thread.sleep(300)
+            // гасим полностью: гостевые процессы (qemu и прочие) должны уйти до конца,
+            // иначе они остаются сиротами и тормозят следующую загрузку
+            runCatching { cur.stop() }
+            Thread.sleep(120)
             // GL-мост нельзя поднять повторно в том же процессе — процесс :vm уходит вместе с машиной
             android.os.Process.killProcess(android.os.Process.myPid())
         }
@@ -358,11 +496,13 @@ class VmActivity : ComponentActivity() {
 
     private enum class Dlg { NONE, SMS, CALL, BATTERY, ADB, DEVICE }
 
-    // position of the floating menu button, kept across launches
-    private val uiPrefs by lazy { getSharedPreferences("vm_ui", MODE_PRIVATE) }
+    // position of the floating menu button, kept across launches in a file both processes can see
     private var menuOffset by mutableStateOf(Offset.Zero)
-    private fun loadMenuOffset() { menuOffset = Offset(uiPrefs.getFloat("menu_x", 0f), uiPrefs.getFloat("menu_y", 0f)) }
-    private fun saveMenuOffset() { uiPrefs.edit().putFloat("menu_x", menuOffset.x).putFloat("menu_y", menuOffset.y).apply() }
+    private fun loadMenuOffset() {
+        val p = app.aemu.core.MenuButtonPos.read(this)
+        menuOffset = if (p != null) Offset(p[0], p[1]) else Offset.Zero
+    }
+    private fun saveMenuOffset() = app.aemu.core.MenuButtonPos.write(this, menuOffset.x, menuOffset.y)
 
     private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) vm.mic.permissionGranted() }
 
@@ -647,22 +787,34 @@ class VmActivity : ComponentActivity() {
             }) { Text(stringResource(R.string.m_reset)) } })
     }
 
+    /**
+     * Перезагрузка: гасим машину и передаём перезапуск основному процессу (см. [VmRestartActivity]).
+     * Он переживает смерть :vm, ждёт её и сразу открывает новое окно системы — без будильников и без
+     * «подвисания» между закрытием окна и новым запуском.
+     */
     private fun rebootVm(recovery: Boolean = false) {
+        if (!endingVm.compareAndSet(false, true)) return
         val id = vm.img.id
         thread {
-            vm.stop()
+            // гасим машину целиком: гостевые процессы должны уйти до новой загрузки
+            runCatching { vm.stop() }
             VmHost.vm = null
-            // the GL bridge cannot come up twice in one process, so a reboot restarts the :vm process
+            // GL-мост нельзя поднять дважды в одном процессе, поэтому перезагрузка перезапускает процесс :vm
             runOnUiThread { restartProcess(id, recovery) }
         }
     }
 
     private fun restartProcess(id: String, recovery: Boolean = false) {
-        val i = Intent(this, VmActivity::class.java).putExtra(EXTRA_ID, id).putExtra(EXTRA_RECOVERY, recovery)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pi = android.app.PendingIntent.getActivity(this, 1, i, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_CANCEL_CURRENT)
-        (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 400, pi)
-        finishAndRemoveTask()
+        // передаём перезапуск, пока приложение ещё на переднем плане, ждать смерть процесса будет уже
+        // основной процесс; finish() здесь, а не finishAndRemoveTask(): иначе можно унести новую активити
+        try {
+            VmRestartActivity.handoff(this, id, recovery, processLifetime, immersiveMode)
+        } catch (_: Exception) {
+            endingVm.set(false)
+            toast(getString(R.string.vm_restart_failed))
+            return
+        }
+        finish()
         android.os.Process.killProcess(android.os.Process.myPid())
     }
 
@@ -681,31 +833,38 @@ class VmActivity : ComponentActivity() {
         LaunchedEffect(Unit) { while (true) { if (vm.recoveryMode) guest.format = vm.recoveryFormat else if (vm.engine == app.aemu.core.Engine.N64) guest.format = 1; seconds = vm.bootSeconds(); frames = if (vm.glInApp) dev.lk.m7sense.GlBridge.frames() else guest.rings; delay(500) } }
         // как только гость начал рисовать — карточку убираем, остаётся маленький индикатор
         val drawing = frames > 30
+        // «меню без кнопки»: запрос из back-обработчика (см. onBackPressedDispatcher в onCreate)
+        LaunchedEffect(menuRequest) {
+            if (menuRequest > 0) when {
+                showTerm -> showTerm = false
+                showLog -> showLog = false
+                else -> menu = true
+            }
+        }
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-            // the menu button stays on screen: 40 dp button + 8 dp padding, anchored at the top end
-            val keep = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
-            val maxX = (constraints.maxWidth - keep).coerceAtLeast(0f)
-            val maxY = (constraints.maxHeight - keep * 2).coerceAtLeast(0f)
-            val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
-            fun clamp(o: Offset) = Offset(if (rtl) o.x.coerceIn(0f, maxX) else o.x.coerceIn(-maxX, 0f), o.y.coerceIn(0f, maxY))
-            LaunchedEffect(maxX, maxY) { menuOffset = clamp(menuOffset) }
-            led?.takeIf { it.lit && showLed }?.let { LedIndicator(it, Modifier.align(Alignment.TopCenter)) }
-            // карточка загрузки
+            // кнопку меню можно утащить за пределы экрана: границ больше нет, место запоминается (см. saveMenuOffset)
+            // светодиод: 45% ширины экрана гостя, по высоте — как раньше, чуть выше самого экрана
+            val ledCenter = if (guestWPx > 0) guestLeftPx + guestWPx * 0.45f else constraints.maxWidth * 0.45f
+            val ledDx = with(androidx.compose.ui.platform.LocalDensity.current) { (ledCenter - constraints.maxWidth / 2f).toDp() }
+            led?.takeIf { it.lit && showLed && !immersiveMode }?.let { LedIndicator(it, Modifier.align(Alignment.TopCenter).absoluteOffset(x = ledDx)) }
+            // карточка загрузки: её можно свернуть в маленькое окно в левом верхнем углу
+            val cardVisible = state != GuestVm.State.RUNNING && !showLog &&
+                (!bootCardHidden || state == GuestVm.State.FAILED) &&
+                !(drawing && state == GuestVm.State.BOOTING)
             AnimatedVisibility(
-                visible = state != GuestVm.State.RUNNING && !showLog && !(drawing && state == GuestVm.State.BOOTING),
+                visible = cardVisible,
                 enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
-            ) { BootCard(seconds) }
+            ) { BootCard(seconds) { bootCardHidden = true } }
 
-            if (drawing && state == GuestVm.State.BOOTING && !showLog && vm.screenUpAt == 0L) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
-                    modifier = Modifier.align(Alignment.TopStart).displayCutoutPadding().statusBarsPadding().padding(8.dp)) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        LoadingIndicator(Modifier.size(24.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.vm_booting_short, seconds.toInt()), style = MaterialTheme.typography.labelMedium)
-                    }
+            // в «погружении» маленького окна нет: ошибка запуска всё равно покажет карточку (см. cardVisible)
+            if (bootCardHidden && !immersiveMode && state != GuestVm.State.RUNNING && state != GuestVm.State.FAILED && !showLog) {
+                // свёрнутая карточка: нажатие возвращает её на экран
+                BootChip(seconds, Modifier.align(Alignment.TopStart).displayCutoutPadding().statusBarsPadding().padding(8.dp)) {
+                    bootCardHidden = false
                 }
+            } else if (drawing && state == GuestVm.State.BOOTING && !showLog && vm.screenUpAt == 0L) {
+                BootChip(seconds, Modifier.align(Alignment.TopStart).displayCutoutPadding().statusBarsPadding().padding(8.dp))
             }
 
             // журнал
@@ -719,10 +878,12 @@ class VmActivity : ComponentActivity() {
             // top menu button (hidden while the log is open so it does not cover the log toolbar); drag to move it
             if (!showLog && !showTerm) Box(Modifier.align(Alignment.TopEnd).displayCutoutPadding().statusBarsPadding().padding(8.dp)
                 .offset { IntOffset(menuOffset.x.roundToInt(), menuOffset.y.roundToInt()) }
-                .pointerInput(Unit) {
-                    detectDragGestures(onDragEnd = { saveMenuOffset() }) { ch, d -> ch.consume(); menuOffset = clamp(menuOffset + d) }
+                .pointerInput(hideMenu, menuMovable) {
+                    // «…» можно закрепить настройкой приложения: тогда перетаскивания нет
+                    if (!hideMenu && menuMovable) detectDragGestures(onDragEnd = { saveMenuOffset() }) { ch, d -> ch.consume(); menuOffset += d }
                 }) {
-                FilledTonalIconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) {
+                // «скрыть кнопку меню»: якорь остаётся для выпадающего меню, открывает его back телефона
+                if (!hideMenu) FilledTonalIconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp).alpha(menuAlpha)) {
                     Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.menu))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -801,21 +962,43 @@ class VmActivity : ComponentActivity() {
             }
 
             // панель кнопок Android
-            if (vm.settings.showNavBar && !showLog && !showTerm) {
-                NavBar(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (vm.settings.navSize == 0) 3.dp else 6.dp))
+            if (vm.settings.showNavBar && !immersiveMode && !showLog && !showTerm) {
+                // «перемещаемая панель»: тянется за ручку или край, но целиком остаётся в пределах экрана
+                val margin = with(androidx.compose.ui.platform.LocalDensity.current) { 40.dp.toPx() }
+                val navMaxX = ((constraints.maxWidth - navBarSize.width) / 2f).coerceAtLeast(0f)
+                val navMinY = -(constraints.maxHeight - navBarSize.height - margin).coerceAtLeast(0f)
+                fun clampNav(o: Offset) = Offset(o.x.coerceIn(-navMaxX, navMaxX), o.y.coerceIn(navMinY, 0f))
+                LaunchedEffect(navMaxX, navMinY) { navOffset = clampNav(navOffset) }
+                NavBar(
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                        .offset { IntOffset(navOffset.x.roundToInt(), navOffset.y.roundToInt()) }
+                        .padding(bottom = if (vm.settings.navSize == 0) 3.dp else 6.dp),
+                    onDrag = { d -> navOffset = clampNav(navOffset + d) },
+                )
             }
         }
     }
 
     /** The bar of guest buttons: the user's own set, each held down in the guest for as long as it is held here. */
     @Composable
-    private fun NavBar(modifier: Modifier) {
+    private fun NavBar(modifier: Modifier, onDrag: (Offset) -> Unit) {
         val compact = vm.settings.navSize == 0
         val keys = remember { vm.settings.navKeys.split(',').filter { it in app.aemu.core.VmSettings.NAV_ALL } }
         if (keys.isEmpty()) return
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f), modifier = modifier) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+            modifier = modifier.onSizeChanged { navBarSize = it }.alpha(navAlpha).pointerInput(navMovable) {
+                // за ручку или за край панели; сами кнопки сохраняют свои жесты (нажатие = клавиша)
+                if (navMovable) detectDragGestures { ch, d -> ch.consume(); onDrag(d) }
+            },
+        ) {
             Row(Modifier.padding(horizontal = if (compact) 6.dp else 10.dp, vertical = if (compact) 2.dp else 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 4.dp)) {
+                if (navMovable) Icon(Icons.Rounded.DragIndicator, null,
+                    Modifier.padding(end = if (compact) 2.dp else 4.dp).size(if (compact) 16.dp else 20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 for (k in keys) NavKey(k, if (compact) 36.dp else 48.dp)
             }
         }
@@ -928,45 +1111,83 @@ class VmActivity : ComponentActivity() {
         }
     }
 
+    /** Маленькое окно «система запускается» в левом верхнем углу; [onClick] возвращает большую карточку. */
     @Composable
-    private fun BootCard(seconds: Long) {
+    private fun BootChip(seconds: Long, modifier: Modifier, onClick: (() -> Unit)? = null) {
+        val phase = when (state) {
+            GuestVm.State.STOPPED, GuestVm.State.PREPARING -> stringResource(R.string.st_preparing)
+            GuestVm.State.BOOTING -> stringResource(R.string.vm_booting_short, seconds.toInt())
+            GuestVm.State.STOPPING -> stringResource(R.string.st_stopping)
+            else -> "…"
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
+            modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier,
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                LoadingIndicator(Modifier.size(24.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(phase, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+
+    @Composable
+    private fun BootCard(seconds: Long, onHide: () -> Unit) {
         Card(
             modifier = Modifier.widthIn(max = 360.dp).padding(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
                 contentColor = MaterialTheme.colorScheme.onSurface),
             shape = MaterialTheme.shapes.extraLarge,
         ) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (state == GuestVm.State.FAILED) {
-                    Text(stringResource(R.string.failed_start), style = MaterialTheme.typography.headlineSmall)
-                    Spacer(Modifier.height(8.dp))
-                    Text(vm.failure ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { stopVm() }) { Text(stringResource(R.string.close)) }
-                        Button(onClick = { thread { vm.stop(); vm.boot() } }) { Text(stringResource(R.string.retry)) }
+            Box {
+                Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (state == GuestVm.State.FAILED) {
+                        Text(stringResource(R.string.failed_start), style = MaterialTheme.typography.headlineSmall)
+                        Spacer(Modifier.height(8.dp))
+                        Text(vm.failure ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { stopVm() }) { Text(stringResource(R.string.close)) }
+                            Button(onClick = { thread { vm.stop(); vm.boot() } }) { Text(stringResource(R.string.retry)) }
+                        }
+                    } else {
+                        LoadingIndicator(Modifier.size(64.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(vm.img.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(vm.img.displayVersion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                        val phase = when (state) {
+                            GuestVm.State.PREPARING -> stringResource(R.string.st_preparing)
+                            GuestVm.State.BOOTING -> stringResource(R.string.st_booting, seconds.toInt())
+                            GuestVm.State.STOPPING -> stringResource(R.string.st_stopping)
+                            else -> "…"
+                        }
+                        Text(phase, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        if (vm.img.bootCount == 0 && state == GuestVm.State.BOOTING) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(stringResource(R.string.first_boot_hint),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(logLines.lastOrNull()?.substringAfter(' ') ?: "", style = Mono, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                } else {
-                    LoadingIndicator(Modifier.size(64.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(vm.img.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(vm.img.displayVersion, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(12.dp))
-                    val phase = when (state) {
-                        GuestVm.State.PREPARING -> stringResource(R.string.st_preparing)
-                        GuestVm.State.BOOTING -> stringResource(R.string.st_booting, seconds.toInt())
-                        GuestVm.State.STOPPING -> stringResource(R.string.st_stopping)
-                        else -> "…"
+                }
+                // «свернуть»: карточка уходит в маленькое окно в углу; ошибку запуска свернуть нельзя
+                if (state != GuestVm.State.FAILED) {
+                    // чуть отступя от края карточки, иначе кружок вылезает за её скруглённый угол
+                    Box(
+                        Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 12.dp).size(28.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f))
+                            .clickable(onClick = onHide),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Minimize, contentDescription = stringResource(R.string.m_minimize),
+                            modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(phase, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    if (vm.img.bootCount == 0 && state == GuestVm.State.BOOTING) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(stringResource(R.string.first_boot_hint),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(logLines.lastOrNull()?.substringAfter(' ') ?: "", style = Mono, maxLines = 2,
-                        overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1100,8 +1321,10 @@ class VmActivity : ComponentActivity() {
     companion object {
         const val EXTRA_ID = "id"
         const val EXTRA_RECOVERY = "recovery"
-        fun start(ctx: Context, id: String, recovery: Boolean = false) {
+        const val EXTRA_IMMERSIVE = "immersive"
+        fun start(ctx: Context, id: String, recovery: Boolean = false, immersive: Boolean = false) {
             ctx.startActivity(Intent(ctx, VmActivity::class.java).putExtra(EXTRA_ID, id).putExtra(EXTRA_RECOVERY, recovery)
+                .putExtra(EXTRA_IMMERSIVE, immersive)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }

@@ -1,24 +1,36 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="128" alt="AEmulator logo"/>
+<img src="docs/assets/logo.png" width="128" alt="AEmulator Pro logo"/>
 
-# AEmulator
+# AEmulator Pro
 
-*Based on the original [SENSES emulator](https://github.com/Istratii-tech/SENSES)*
+*A community fork of [AEmulator](https://github.com/uxazu/aemulator) — run classic Android firmware on a modern phone.*
 
-**Run classic Android firmware — HTC Sense, TouchWiz, MIUI, AOSP — on a modern phone. No root, no PC.**
-
-[![Version](https://img.shields.io/badge/version-0.0.0.3-3D5AFE?style=for-the-badge)](https://github.com/uxazu/aemulator/releases) [![License](https://img.shields.io/badge/license-GPL--3.0-3D5AFE?style=for-the-badge)](LICENSE) [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/uxazu/aemulator) [![Forum](https://img.shields.io/badge/Forum-aeforum-FF6D00?style=for-the-badge&logo=discourse&logoColor=white)](https://aeforum.uxazuu.space/) [![Telegram](https://img.shields.io/badge/Telegram-channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/aemulatorofficial) [![Website](https://img.shields.io/badge/site-aemulator.gt.tc-111?style=for-the-badge)](https://aemulator.gt.tc)
-
-**🇬🇧 English** · [🇷🇺 Русский](docs/i18n/README.ru.md) · [🇺🇦 Українська](docs/i18n/README.uk.md) · [🇩🇪 Deutsch](docs/i18n/README.de.md) · [🇫🇷 Français](docs/i18n/README.fr.md) · [🇪🇸 Español](docs/i18n/README.es.md) · [🇧🇷 Português](docs/i18n/README.pt-BR.md) · [🇮🇹 Italiano](docs/i18n/README.it.md) · [🇵🇱 Polski](docs/i18n/README.pl.md) · [🇹🇷 Türkçe](docs/i18n/README.tr.md) · [🇸🇦 العربية](docs/i18n/README.ar.md) · [🇮🇷 فارسی](docs/i18n/README.fa.md) · [🇮🇳 हिन्दी](docs/i18n/README.hi.md) · [🇮🇩 Indonesia](docs/i18n/README.id.md) · [🇻🇳 Tiếng Việt](docs/i18n/README.vi.md) · [🇨🇳 简体中文](docs/i18n/README.zh-CN.md) · [🇯🇵 日本語](docs/i18n/README.ja.md) · [🇰🇷 한국어](docs/i18n/README.ko.md)
+[![License](https://img.shields.io/badge/license-GPL--3.0-006D61?style=for-the-badge)](LICENSE) [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/jntm233-jntm/AEmulator-Pro) [![Version](https://img.shields.io/badge/version-0.0.0.3.1-006D61?style=for-the-badge)](https://github.com/jntm233-jntm/AEmulator-Pro/releases)
 
 </div>
 
 ---
 
-AEmulator boots a real Android 2.3–17 system image straight from a firmware file you already have: a recovery ZIP, an Odin archive, a Google factory image or a GSI. Old 32-bit firmware (2.3–4.4) runs through a patched QEMU, Android 5.0–17 runs natively on the phone’s arm64 cores. The kernel’s binder is emulated, graphics use your phone’s GPU and sound goes through Android’s audio stack — everything runs inside a normal app.
+AEmulator Pro boots a real Android system image straight from a firmware file you already have: a recovery ZIP, an Odin archive, a Google factory image or a GSI. Old 32-bit firmware (2.3–5.4) runs through a patched QEMU, Android 5.0–17 runs natively on the phone's arm64 cores. The kernel's binder is emulated, graphics use your phone's GPU and sound goes through Android's audio stack — everything runs inside a normal app, no root and no PC.
 
-## ✨ Features
+## ✦ What is different in this fork
+
+Compared to upstream [AEmulator](https://github.com/uxazu/aemulator):
+
+| | |
+|---|---|
+| **Name and package** | *AEmulator Pro*, package `app.aemu.pro` (installs next to the original) |
+| **Branding** | new launcher icon colours and a teal `#006D61` accent, light and dark schemes |
+| **Settings** | reworked layout, collapsible categories, predictive-back animation |
+| **Notifications** | Android 16 live updates (status-bar chip / “dynamic island”), switchable |
+| **Reboot** | fast hand-off restart: the machine window closes and reopens at once |
+| **Safety** | per-machine password protection (PBKDF2), separate task per machine |
+| **Import** | firmware import in the background with progress in the notification |
+| **Legal** | licence and modification-notice pages inside the app |
+| **Startup** | per-machine setup wizard skip, “…” button can be hidden or moved |
+
+## ✔ Features
 
 - Import almost any firmware format: CWM/TWRP ZIP, Samsung Odin `.tar.md5`, Google factory `.tgz`, `system.img`, OTA `system.new.dat.br`
 - Vendor skins work as shipped: HTC Sense, Samsung TouchWiz, MIUI, AOSP
@@ -27,62 +39,55 @@ AEmulator boots a real Android 2.3–17 system image straight from a firmware fi
 - Material 3 Expressive interface in 18 languages
 - Free and open source (GPL-3.0)
 
-## 📱 Firmware list
-
-The list of firmware that has been checked — with statuses, notes and download links — lives on our forum. Share your results there, ask questions and find new images.
-
-<div align="center">
-
-<a href="https://aeforum.uxazuu.space/"><img src="https://img.shields.io/badge/Open%20the%20forum-aeforum.uxazuu.space-FF6D00?style=for-the-badge&logo=discourse&logoColor=white" height="44" alt="Forum"/></a>
-
-</div>
-
 ## 🚀 Quick start
 
-1. Download the APK from [Releases](https://github.com/uxazu/aemulator/releases) and install it.
-2. Find a firmware on the [forum](https://aeforum.uxazuu.space/) and download it to your phone.
-3. Open AEmulator → **Add firmware** and pick the file. Import takes a few minutes.
+1. Download the APK from [Releases](https://github.com/jntm233-jntm/AEmulator-Pro/releases) and install it.
+2. Copy a firmware file to the phone.
+3. Open AEmulator Pro → **Add firmware** and pick the file. Import takes a few minutes.
 4. Press **Start**. The first boot is slower: the system optimises its apps.
-5. Use the ⋮ menu for volume, power button and logs; the ⚙️ button opens app settings and language.
+5. Use the ⋮ menu for volume, power button and logs; the ⚙ button opens app settings and language.
 
 ## 📋 Requirements
 
-- Android 8.0+ on a 64-bit ARM phone (arm64-v8a)
+- Android 8.0+ (API 26) on a 64-bit ARM phone (arm64-v8a)
 - About 1–3 GB of free space per firmware
 - A recent Snapdragon / Dimensity / Tensor chip is recommended
 
 ## ⚙️ How it works
 
-On Android 2.3–4.4 each guest process runs under a patched user-mode QEMU; on 5.0–17 the firmware’s own arm64 programs run natively, with one engine kernel per Android version catching their system calls. A binder daemon replaces the kernel driver, a GL bridge forwards OpenGL ES calls to the phone’s GPU, and small guest libraries (audio HAL, audio policy wrapper, LD_PRELOAD shim) adapt vendor code to the emulator. The importer reads the firmware, finds the init scripts in its boot image and builds a start plan for system services.
+On Android 2.3–5.4 each guest process runs under a patched user-mode QEMU; on 5.0–17 the firmware's own arm64 programs run natively, with one engine kernel per Android version catching their system calls. A binder daemon replaces the kernel driver, a GL bridge forwards OpenGL ES calls to the phone's GPU, and small guest libraries (audio HAL, audio policy wrapper, LD_PRELOAD shim) adapt vendor code to the emulator. The importer reads the firmware, finds the init scripts in its boot image and builds a start plan for system services.
 
 ## 🛠️ Build from source
 
-You need JDK 17, Android SDK 36 and NDK r28. Native guest parts are built with the scripts in `native/*/build.sh`.
+You need JDK 21 and Android SDK 36 (the guest engines are prebuilt and shipped in `app/src/main/assets`; the NDK is only needed if you rebuild the native parts with `native/*/build.sh`).
 
 ```bash
-git clone https://github.com/uxazu/aemulator.git
-cd aemulator
-./gradlew assembleRelease
+git clone https://github.com/jntm233-jntm/AEmulator-Pro.git
+cd AEmulator-Pro
+./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease    # signed if keystore.properties is present
+./gradlew :app:copyReleaseApks    # release-apks/<version>/AEmulatorPro-<version>.apk
 ```
 
-## 🙏 Credits
+- Package id: `app.aemu.pro`
+- There are no product flavors: the APK is `app-debug.apk` / `app-release.apk`, without any package suffix.
 
-AEmulator grew out of the HTC Desire HD and HTC One M7 emulators by [the original author](https://t.me/istratii_tech1) — their engine made this project possible.
+## 📄 Licence, credits and changes
 
-## 💙 Support the project
+AEmulator Pro is free software under the **GNU General Public License v3.0** — see [LICENSE](LICENSE). The full licence text is also bundled in the app (Settings → Project → Licence).
 
-If AEmulator brought back a phone you loved, you can support development:
+Credits:
 
-- 💳 [dalink.to/uxazu](https://dalink.to/uxazu)
+- **[jntm233-jntm](https://github.com/jntm233-jntm)** — author of this fork (AEmulator Pro);
+- **[uxazu](https://github.com/uxazu)** — author of [AEmulator](https://github.com/uxazu/aemulator), the upstream project this fork is based on;
+- **[Istratii-tech](https://t.me/istratii_tech1)** — original author of the SENSES engine AEmulator grew out of.
 
-## 🔗 Links
+This is an independent community fork. It is **not affiliated with, sponsored or endorsed by** the original authors; their names and links are kept only for attribution. The changes made in this fork are listed in [NOTICE.md](NOTICE.md) and inside the app (Settings → Project → Modification notice), as required by GPL-3.0 §5(a).
 
-- 🌐 Website: [aemulator.gt.tc](https://aemulator.gt.tc)
-- 💬 Forum: [aeforum.uxazuu.space](https://aeforum.uxazuu.space/)
-- 📣 Telegram channel: [@aemulatorofficial](https://t.me/aemulatorofficial)
-- 👤 Author: [uxazu](https://github.com/uxazu)
-- 🧬 Original author: [t.me/istratii_tech1](https://t.me/istratii_tech1)
+## 中文简介
 
-## 📄 License
+**AEmulator Pro** 是 [AEmulator](https://github.com/uxazu/aemulator) 的社区修改版（原作者 uxazu，其引擎源自 Istratii-tech 的 SENSES），遵循 **GPL-3.0** 协议发布。
 
-GPL-3.0. Android, trademarks and firmware belong to their owners.
+相对原版的主要改动：改名为 AEmulator Pro、包名 `app.aemu.pro`；全新图标配色与 `#006D61` 强调色；设置页重排并加入预测性返回动画；接入 Android 16 实时更新通知（可开关）；重启改为快速接力重启；每个虚拟机独立任务栈与密码保护；后台导入固件；应用内增加许可证与修改声明页面。
+
+本项目与原作者无隶属关系，署名仅为遵守协议与致谢。完整改动见 [NOTICE.md](NOTICE.md)。
